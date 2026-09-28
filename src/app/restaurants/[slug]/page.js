@@ -1,0 +1,294 @@
+// src/app/restaurants/[slug]/page.js
+import { notFound } from "next/navigation";
+import { FiMapPin, FiStar, FiClock } from "react-icons/fi";
+import { FaRupeeSign } from "react-icons/fa";
+import {
+  getRestaurantBySlug,
+  getAllRestaurants,
+} from "@/lib/services/restaurantService";
+import HotelGallery from "@/components/hotels/HotelGallery"; // reused — generic image gallery
+import AmenitiesGrid from "@/components/hotels/AmenitiesGrid"; // reused for cuisine tags display
+import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import ReservationForm from "@/components/restaurants/ReservationForm";
+import JsonLd from "@/components/ui/JsonLd";
+import { formatCurrency } from "@/utils/helpers";
+import { getApprovedReviewsForEntity } from "@/lib/services/reviewService";
+import ReviewsList from "@/components/reviews/ReviewsList";
+import ReviewForm from "@/components/reviews/ReviewForm";
+import WishlistButton from "@/components/ui/WishlistButton";
+import CuisineGrid from "@/components/restaurants/CuisineGrid";
+import { isValidGoogleMapsEmbedUrl } from "@/utils/helpers";
+import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import CustomBadge from "@/components/ui/CustomBadge";
+export const revalidate = 1800;
+import ShareButton from "@/components/ui/ShareButton";
+import AvailabilityBadge from "@/components/ui/AvailabilityBadge";
+import { getSponsoredHotelsByDestination } from "@/lib/services/hotelService";
+import { getSponsoredRestaurantsByDestination } from "@/lib/services/restaurantService";
+import SponsoredListingsSection from "@/components/destinations/SponsoredListingsSection";
+import FaqAccordion from "@/components/ui/FaqAccordion";
+import { generateFaqSchema } from "@/utils/helpers";
+import ExpandableText from "@/components/ui/ExpandableText";
+import { buildMetadata } from "@/utils/seo";
+import { SITE_NAME } from "@/lib/siteConfig";
+
+export async function generateStaticParams() {
+  const restaurants = await getAllRestaurants();
+  return restaurants.map((r) => ({ slug: r.slug }));
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const restaurant = await getRestaurantBySlug(slug);
+  if (!restaurant || restaurant.status !== "active") return { title: "Restaurant Not Found" };
+
+  return buildMetadata({
+    title: `${restaurant.name} | ${restaurant.destinationName} | ${SITE_NAME}`,
+    description: restaurant.description?.slice(0, 155) || `Reserve a table at ${restaurant.name}.`,
+    path: `/restaurants/${restaurant.slug}`,
+    image: restaurant.images?.[0]?.url,
+  });
+}
+
+export default async function RestaurantDetailPage({ params }) {
+  const { slug } = await params;
+  const restaurant = await getRestaurantBySlug(slug);
+
+  if (!restaurant || restaurant.status !== "active") {
+    notFound();
+  }
+
+  const reviews = await getApprovedReviewsForEntity(
+    "restaurant",
+    restaurant.id,
+  );
+
+  const sponsoredHotels = await getSponsoredHotelsByDestination(
+    restaurant.destinationId,
+  );
+  const sponsoredRestaurants = await getSponsoredRestaurantsByDestination(
+    restaurant.destinationId,
+  );
+
+  const faqSchema = generateFaqSchema(restaurant.faqs);
+
+  const restaurantSchema = {
+    "@context": "https://schema.org",
+    "@type": "Restaurant",
+    name: restaurant.name,
+    description: restaurant.description || "",
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: restaurant.address || "",
+      addressLocality: restaurant.destinationName || "",
+      addressCountry: "IN",
+    },
+    servesCuisine: restaurant.cuisine || [],
+    priceRange: restaurant.priceRange || "$$",
+    image: restaurant.images?.[0]?.url,
+    ...(restaurant.rating > 0 && {
+      aggregateRating: {
+        "@type": "AggregateRating",
+        ratingValue: restaurant.rating,
+        reviewCount: restaurant.reviewCount || 1,
+        bestRating: 5,
+        worstRating: 1,
+      },
+    }),
+  };
+  return (
+    <>
+      <JsonLd data={restaurantSchema} />
+      {faqSchema && <JsonLd data={faqSchema} />}
+
+      <div className="bg-secondary dark:bg-gray-900">
+        <Breadcrumbs
+          items={[
+            { name: "Restaurants", url: "/restaurants" },
+            { name: restaurant.name, url: `/restaurants/${restaurant.slug}` },
+          ]}
+        />
+      </div>
+
+      <div className="container-custom py-8 pb-24 lg:pb-8">
+        <div className="mb-6">
+          <p className="flex items-center gap-1.5 text-secondary font-medium text-sm uppercase tracking-wide">
+            <FiMapPin /> {restaurant.destinationName}
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display font-extrabold text-2xl md:text-4xl text-primary dark:text-white">
+                {restaurant.name}
+                 {restaurant.verified && <VerifiedBadge />}
+              </h1>
+             
+              <CustomBadge
+                text={restaurant.customBadgeText}
+                color={restaurant.customBadgeColor}
+                position="inline"
+              />
+              {restaurant.rating > 0 && (
+                <div className="flex items-center gap-1 bg-primary/10 px-2.5 py-1 rounded-lg">
+                  <FiStar className="text-accent fill-accent text-sm" />
+                  <span className="font-semibold text-primary text-sm">
+                    {restaurant.rating}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ShareButton
+                title={restaurant.name}
+                text={`Check out ${restaurant.name} in ${restaurant.destinationName} on Local Kokani`}
+                url={`${process.env.NEXT_PUBLIC_SITE_URL}/restaurants/${restaurant.slug}`}
+                variant="button"
+              />
+              <WishlistButton
+                item={restaurant}
+                entityType="restaurant"
+                size="text-xl"
+                className="!bg-gray-100 shadow-none"
+              />
+            </div>
+          </div>
+          <p className="dark:text-gray-500 mt-1">{restaurant.address}</p>
+
+          <div className="mt-3">
+            <AvailabilityBadge
+              status={restaurant.availabilityStatus}
+              message={restaurant.availabilityMessage}
+              size="lg"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-3">
+            <p className="flex items-center gap-1.5 text-primary dark:text-white text-base font-bold">
+              {restaurant.costForTwo
+                ? `${formatCurrency(restaurant.costForTwo)} for two (Approx.)`
+                : restaurant.priceRange}
+            </p>
+            {restaurant.openingHours && (
+              <p className="flex items-center gap-1.5 dark:text-gray-500 text-sm">
+                <FiClock className="text-secondary" /> {restaurant.openingHours}
+              </p>
+            )}
+          </div>
+        </div>
+
+        <HotelGallery images={restaurant.images} hotelName={restaurant.name} />
+
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-10 mt-10">
+          <div className="space-y-10 order-2 lg:order-1">
+            <div class="card2 p-4 sm:p-6">
+              <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                About
+              </h2>
+             <ExpandableText text={restaurant.description} lines={4} />
+            </div>
+
+            {restaurant.cuisine?.length > 0 && (
+              <div class="card2 p-4 sm:p-6">
+                <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                  Cuisine
+                </h2>
+                <CuisineGrid cuisine={restaurant.cuisine} />
+              </div>
+            )}
+
+            {restaurant.partnerPlan === "premium" &&
+              (restaurant.mapEmbedUrl ||
+                (restaurant.location?.lat && restaurant.location?.lng)) && (
+                <div class="card2 p-4 sm:p-6">
+                  <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                    Location
+                  </h2>
+                  <div className="rounded-2xl overflow-hidden aspect-[16/9] border dark:border-gray-800">
+                    <iframe
+                      title={`Map location of ${restaurant.name}`}
+                      width="100%"
+                      height="100%"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={
+                        restaurant.mapEmbedUrl &&
+                        isValidGoogleMapsEmbedUrl(restaurant.mapEmbedUrl)
+                          ? restaurant.mapEmbedUrl
+                          : `https://www.google.com/maps?q=${restaurant.location.lat},${restaurant.location.lng}&z=15&output=embed`
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* NEW: FAQ section */}
+            {restaurant.faqs?.length > 0 && (
+              <div class="card2 p-4 sm:p-6">
+                <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                  Frequently Asked Questions
+                </h2>
+                <FaqAccordion faqs={restaurant.faqs} />
+              </div>
+            )}
+
+            {/* NEW: Reviews section */}
+            <div class="card2 p-4 sm:p-6">
+              <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                Guest Reviews {reviews.length > 0 && `(${reviews.length})`}
+              </h2>
+              <div className="space-y-6">
+                <ReviewsList reviews={reviews} />
+                <ReviewForm entityType="restaurant" entity={restaurant} />
+              </div>
+            </div>
+          </div>
+
+          <div className="order-1 lg:order-2">
+            <div className="card p-6 lg:sticky lg:top-24">
+              {restaurant.availabilityStatus === "soldout" ? (
+                <div className="text-center py-6">
+                  <AvailabilityBadge
+                    status="soldout"
+                    message={restaurant.availabilityMessage}
+                    size="lg"
+                  />
+                  <p className="text-gray-500 text-sm mt-4">
+                    This restaurant isn't taking reservations right now. Check
+                    back later, or explore other spots in{" "}
+                    {restaurant.destinationName}.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <h3 className="font-display font-semibold text-primary dark:text-white mb-4">
+                    Reserve a Table
+                  </h3>
+                  {restaurant.availabilityStatus === "limited" && (
+                    <div className="mb-4">
+                      <AvailabilityBadge
+                        status="limited"
+                        message={restaurant.availabilityMessage}
+                        size="lg"
+                      />
+                    </div>
+                  )}
+                  <ReservationForm restaurant={restaurant} />
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* NEW */}
+      <SponsoredListingsSection
+        sponsoredHotels={sponsoredHotels}
+        sponsoredRestaurants={sponsoredRestaurants}
+        destinationName={restaurant.destinationName}
+        title={`You Might Also Like in ${restaurant.destinationName}`}
+        excludeRestaurantId={restaurant.id}
+      />
+    </>
+  );
+}

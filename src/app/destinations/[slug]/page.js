@@ -1,0 +1,197 @@
+// src/app/destinations/[slug]/page.js
+import Image from "next/image";
+import { notFound } from "next/navigation";
+import { FiMapPin, FiHome, FiCoffee } from "react-icons/fi";
+import {
+  getDestinationBySlug,
+  getAllDestinations,
+} from "@/lib/services/destinationService";
+import { getHotelsByDestination } from "@/lib/services/hotelService";
+import { getRestaurantsByDestination } from "@/lib/services/restaurantService";
+import HotelsLoadMoreGrid from "@/components/hotels/HotelsLoadMoreGrid";
+import RestaurantsLoadMoreGrid from "@/components/restaurants/RestaurantsLoadMoreGrid";
+import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import JsonLd from "@/components/ui/JsonLd";
+import { generateDestinationCollectionSchema } from "@/utils/helpers";
+import { getSponsoredHotelsByDestination } from "@/lib/services/hotelService";
+import { getSponsoredRestaurantsByDestination } from "@/lib/services/restaurantService";
+import SponsoredListingsSection from "@/components/destinations/SponsoredListingsSection";
+import ShareButton from "@/components/ui/ShareButton";
+import ExpandableText from "@/components/ui/ExpandableText";
+import TouristPlacesSection from "@/components/destinations/TouristPlacesSection";
+import { generateTouristPlacesSchema } from "@/utils/helpers";
+import { buildMetadata } from "@/utils/seo";
+import { SITE_NAME } from "@/lib/siteConfig";
+
+export const revalidate = 3600;
+
+export async function generateStaticParams() {
+  const destinations = await getAllDestinations();
+  return destinations.map((dest) => ({ slug: dest.slug }));
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const destination = await getDestinationBySlug(slug);
+  if (!destination) return { title: "Destination Not Found" };
+
+  const title = destination.seo?.metaTitle || `Best Hotels in ${destination.name} | ${SITE_NAME}`;
+  const description = destination.seo?.metaDescription || `Explore ${destination.hotelCount || "top"} handpicked hotels in ${destination.name}.`;
+
+  return buildMetadata({
+    title,
+    description,
+    path: `/destinations/${destination.slug}`,
+    image: destination.image?.url,
+    keywords: [
+    `hotels in ${destination.name}`,
+    `${destination.name} tourism`,
+    `places to visit in ${destination.name}`,
+    `${destination.name} ${destination.country}`,
+  ],
+  });
+}
+
+export default async function DestinationDetailPage({ params }) {
+  const { slug } = await params;
+  const destination = await getDestinationBySlug(slug);
+
+  if (!destination) {
+    notFound();
+  }
+
+  const hotels = await getHotelsByDestination(destination.id);
+  const restaurants = await getRestaurantsByDestination(destination.id);
+  const sponsoredHotels = await getSponsoredHotelsByDestination(destination.id);
+  const sponsoredRestaurants = await getSponsoredRestaurantsByDestination(
+    destination.id,
+  );
+
+  const destinationSchema = generateDestinationCollectionSchema(
+    destination,
+    hotels,
+  );
+
+  const touristPlacesSchema = generateTouristPlacesSchema(destination.touristPlaces, destination.name);
+
+  return (
+    <>
+      <JsonLd data={destinationSchema} />
+      {touristPlacesSchema && <JsonLd data={touristPlacesSchema} />}
+
+      <div className="bg-primary dark:bg-gray-900">
+        <Breadcrumbs
+          items={[
+            { name: "Destinations", url: "/destinations" },
+            {
+              name: destination.name,
+              url: `/destinations/${destination.slug}`,
+            },
+          ]}
+        />
+      </div>
+
+      <section className="relative h-[20vh] min-h-[200px] sm:h-[35vh] sm:min-h-[250px] overflow-hidden">
+        <Image
+          src={destination.image?.url || "/placeholder-destination.jpg"}
+          alt={`${destination.name}, ${destination.country}`}
+          fill
+          priority
+          sizes="100vw"
+          className="object-cover"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-primary/90 via-primary/40 to-transparent" />
+        <div className="absolute bottom-0 left-0 right-0 pb-10">
+          <div className="container-custom flex items-end justify-between">
+            <div>
+              <p className="flex items-center gap-1.5 text-white/80 text-sm font-medium mb-2">
+                <FiMapPin /> {destination.country}
+              </p>
+              <h1 className="font-display font-extrabold text-2xl md:text-3xl text-white">
+                {destination.name}
+              </h1>
+
+              <div className="flex items-center gap-3 mt-1">
+                <p className="flex items-center gap-1.5 text-white/90 text-sm font-medium mt-3">
+                  <FiHome className="text-accent" />
+                  {hotels.length}{" "}
+                  {hotels.length === 1 ? "hotel" : "hotels"}{" "}
+                </p>
+
+                <p className="flex items-center gap-1.5 text-white/90 text-sm font-medium mt-3">
+                  <FiCoffee className="text-accent" />
+                  {restaurants.length}{" "}
+                  {restaurants.length === 1 ? "restaurant" : "restaurants"}{" "}
+                </p>
+              </div>
+            </div>
+            <ShareButton
+              title={destination.name}
+              text={`Explore hotels and restaurants in ${destination.name} on Local Kokani`}
+              url={`${process.env.NEXT_PUBLIC_SITE_URL}/destinations/${destination.slug}`}
+              variant="icon"
+              // Note: on a dark hero background, the icon-variant white bg still shows clearly since it has its own white/95 background regardless of what's behind it
+            />
+          </div>
+        </div>
+      </section> 
+
+      <section className="py-12 bg-white dark:bg-gray-900 border-b dark:border-gray-800">
+        <div className="container-custom ">
+          <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+            About {destination.name}
+          </h2>
+          <ExpandableText text={destination.description} lines={4} />
+        </div>
+      </section>
+
+      {/* NEW: Tourist Places — right after About */}
+      <TouristPlacesSection
+        places={destination.touristPlaces}
+        destinationName={destination.name}
+      />
+
+      {/* NEW: Sponsored Mixed Section — right after About, before Hotels */}
+      <SponsoredListingsSection
+        sponsoredHotels={sponsoredHotels}
+        sponsoredRestaurants={sponsoredRestaurants}
+        destinationName={destination.name}
+      />
+
+      {/* Hotels List */}
+      <section className="py-12 bg-gray-50 dark:bg-gray-900 min-h-[40vh]">
+        <div className="container-custom">
+          <div className="flex items-center justify-between mb-10">
+            <h2 className="section-title">Hotels in {destination.name}</h2>
+            <span className="dark:text-gray-500 text-sm">
+              Sorted by price (low to high)
+            </span>
+          </div>
+
+          <HotelsLoadMoreGrid
+            hotels={hotels}
+            destinationName={destination.name}
+          />
+        </div>
+      </section>
+
+      {/* Restaurants List */}
+      {restaurants.length > 0 && (
+        <section className="py-16 bg-white dark:bg-gray-950">
+          <div className="container-custom">
+            <div className="flex items-center justify-between mb-10">
+              <h2 className="section-title">
+                Restaurants in {destination.name}
+              </h2>
+              <span className="dark:text-gray-500 text-sm">
+                Sorted by rating (highest first)
+              </span>
+            </div>
+
+            <RestaurantsLoadMoreGrid restaurants={restaurants} />
+          </div>
+        </section>
+      )}
+    </>
+  );
+}

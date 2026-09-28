@@ -1,0 +1,68 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+
+} 
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary hover:bg-primary-dark text-white font-medium px-6 py-3 rounded-xl transition-all duration-300 shadow-card hover:shadow-card-hover;
+  }
+  .btn-secondary { 
+    @apply bg-secondary hover:bg-secondary-dark text-white font-medium px-6 py-3 rounded-xl transition-all duration-300;
+  }
+  .btn-accent {
+    @apply bg-accent hover:bg-accent-dark text-white font-medium px-6 py-3 rounded-xl transition-all duration-300;
+  }
+  .container-custom {
+    @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8;
+  }
+ .section-title {
+    @apply font-display font-bold text-2xl md:text-4xl text-primary dark:text-white;
+  }
+  /* ⬇️ THE BIG ONE — every .card usage across the entire app gets dark mode automatically */
+  .card {
+    @apply bg-white dark:bg-gray-900 rounded-2xl shadow-card hover:shadow-card-hover dark:shadow-none dark:border dark:border-gray-800 transition-all duration-300;
+  }
+
+  .bx-shadow {
+    @apply shadow-[0_0_0_10px_rgba(255,255,255,0.15),0_2px_48px_0_rgba(0,0,0,0.04)];
+  }
+  
+  .cbord {
+    @apply border border-[#e4e1d6];
+  }
+
+  .card2 {
+    @apply rounded-2xl transition-all duration-300 bg-white dark:bg-gray-900 shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1)];
+  }
+
+
+}
+
+@layer utilities {
+  .pb-safe {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+

@@ -1,0 +1,260 @@
+// src/app/hotels/[slug]/page.js
+import { notFound } from "next/navigation";
+import { FiMapPin, FiStar, FiCheck } from "react-icons/fi";
+import { getHotelBySlug, getAllHotels } from "@/lib/services/hotelService";
+import Breadcrumbs from "@/components/ui/Breadcrumbs";
+import HotelGallery from "@/components/hotels/HotelGallery";
+import AmenitiesGrid from "@/components/hotels/AmenitiesGrid";
+import RoomTypesList from "@/components/hotels/RoomTypesList";
+import BookingSidebar from "@/components/hotels/BookingSidebar";
+import JsonLd from "@/components/ui/JsonLd";
+import { generateHotelSchema } from "@/utils/helpers";
+import MobileStickyBar from "@/components/hotels/MobileStickyBar";
+import { getApprovedReviewsForEntity } from "@/lib/services/reviewService";
+import ReviewsList from "@/components/reviews/ReviewsList";
+import ReviewForm from "@/components/reviews/ReviewForm";
+
+import WishlistButton from "@/components/ui/WishlistButton";
+import { isValidGoogleMapsEmbedUrl, generateFaqSchema } from "@/utils/helpers";
+import VerifiedBadge from "@/components/ui/VerifiedBadge";
+import CustomBadge from "@/components/ui/CustomBadge";
+import ShareButton from "@/components/ui/ShareButton";
+import AvailabilityBadge from "@/components/ui/AvailabilityBadge";
+import { getSponsoredHotelsByDestination } from "@/lib/services/hotelService";
+import { getSponsoredRestaurantsByDestination } from "@/lib/services/restaurantService";
+import SponsoredListingsSection from "@/components/destinations/SponsoredListingsSection";
+import FaqAccordion from "@/components/ui/FaqAccordion";
+import ExpandableText from "@/components/ui/ExpandableText";
+import { buildMetadata } from "@/utils/seo"; // ⬅️ ADD
+import { SITE_NAME } from "@/lib/siteConfig";
+
+export const revalidate = 1800;
+
+export async function generateStaticParams() {
+  const hotels = await getAllHotels();
+  return hotels.map((hotel) => ({ slug: hotel.slug }));
+}
+
+export async function generateMetadata({ params }) {
+  const { slug } = await params;
+  const hotel = await getHotelBySlug(slug);
+
+  if (!hotel || hotel.status !== "active") {
+    return { title: "Hotel Not Found | Local Kokani" };
+  }
+
+  const title = `${hotel.name} | ${hotel.destinationName} | ${SITE_NAME}`;
+  const description = hotel.description?.slice(0, 155) || `Book ${hotel.name} in ${hotel.destinationName}. Verified stay, best price guarantee.`;
+
+  return buildMetadata({ 
+    title,
+    description,
+    path: `/hotels/${hotel.slug}`,
+    image: hotel.images?.[0]?.url,
+    keywords: [ // ⬅️ ADD — derived from real listing data, not generic
+    hotel.name,
+    `hotels in ${hotel.destinationName}`,
+    `${hotel.destinationName} accommodation`,
+    ...(hotel.amenities || []).slice(0, 3),
+  ],
+  });
+} 
+
+export default async function HotelDetailPage({ params }) {
+  const { slug } = await params;
+
+  const hotel = await getHotelBySlug(slug);
+
+  if (!hotel || hotel.status !== "active") {
+    notFound();
+  }
+
+  const faqSchema = generateFaqSchema(hotel.faqs);
+  if (!hotel) {
+    notFound();
+  }
+
+  const reviews = await getApprovedReviewsForEntity("hotel", hotel.id);
+
+  // NEW: fetch sponsored listings for this hotel's destination
+  const sponsoredHotels = await getSponsoredHotelsByDestination(
+    hotel.destinationId,
+  );
+  const sponsoredRestaurants = await getSponsoredRestaurantsByDestination(
+    hotel.destinationId,
+  );
+
+  const hotelSchema = generateHotelSchema(hotel);
+
+  return (
+    <>
+      <JsonLd data={hotelSchema} />
+      {faqSchema && <JsonLd data={faqSchema} />}
+
+      <div className="bg-secondary dark:bg-gray-900">
+        <Breadcrumbs
+          items={[
+            { name: "Hotels", url: "/hotels" },
+            { name: hotel.name, url: `/hotels/${hotel.slug}` },
+          ]}
+        />
+      </div>
+
+      <div className="container-custom py-8 pb-24 lg:pb-8">
+        {/* Header */}
+        <div className="mb-6">
+          <p className="flex items-center gap-1.5 text-secondary font-medium text-sm uppercase tracking-wide">
+            <FiMapPin /> {hotel.destinationName}
+          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 mt-2">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="font-display font-extrabold text-2xl md:text-4xl text-primary dark:text-white">
+                {hotel.name}
+                {hotel.verified && <VerifiedBadge />}
+              </h1>
+
+              <CustomBadge
+                text={hotel.customBadgeText}
+                color={hotel.customBadgeColor}
+                position="inline"
+              />
+              <div className="flex items-center gap-1 bg-primary/10 dark:bg-gray-800 px-2.5 py-1 rounded-lg">
+                <FiStar className="text-accent fill-accent text-sm" />
+                <span className="font-semibold text-primary dark:text-white text-sm">
+                  {hotel.rating}
+                </span>
+                <span className="text-gray-800 dark:text-white text-xs">
+                  ({hotel.reviewCount} reviews)
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <ShareButton
+                title={hotel.name}
+                text={`Check out ${hotel.name} in ${hotel.destinationName} on Local Kokani`}
+                url={`https://www.localkokani.com/hotels/${hotel.slug}`}
+                variant="button"
+              />
+              <WishlistButton
+                item={hotel}
+                size="text-xl"
+                className="!bg-gray-100 shadow-none"
+              />
+            </div>
+          </div>
+          <p className="dark:text-gray-500 mt-1">{hotel.address}</p>
+
+          <div className="mt-3">
+            <AvailabilityBadge
+              status={hotel.availabilityStatus}
+              message={hotel.availabilityMessage}
+              size="lg"
+            />
+          </div>
+        </div>
+
+        {/* Gallery */}
+        <HotelGallery images={hotel.images} hotelName={hotel.name} />
+
+        {/* Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-10 mt-10">
+          {/* Main content */}
+          <div className="space-y-10 order-2 lg:order-1">
+            {/* Description */}
+            <div className="card2 p-4 sm:p-6">
+              <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                About This Hotel
+              </h2>
+              <ExpandableText text={hotel.description} lines={4} />
+            </div>
+
+            {/* Amenities */}
+            {hotel.amenities?.length > 0 && (
+              <div className="card2 p-4 sm:p-6">
+                <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                  Amenities
+                </h2>
+                <AmenitiesGrid amenities={hotel.amenities} />
+              </div>
+            )}
+
+            {/* Room Types */}
+            {hotel.roomTypes?.length > 0 && (
+              <div className="card2 p-4 sm:p-6">
+                <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                  Room Options
+                </h2>
+                <RoomTypesList roomTypes={hotel.roomTypes} />
+              </div>
+            )}
+
+            {/* Location */}
+            {hotel.partnerPlan === "premium" &&
+              (hotel.mapEmbedUrl ||
+                (hotel.location?.lat && hotel.location?.lng)) && (
+                <div className="card2 p-4 sm:p-6">
+                  <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                    Location
+                  </h2>
+                  <div className="rounded-2xl overflow-hidden aspect-[16/9] border dark:border-gray-800">
+                    <iframe
+                      title={`Map location of ${hotel.name}`}
+                      width="100%"
+                      height="100%"
+                      style={{ border: 0 }}
+                      loading="lazy"
+                      referrerPolicy="no-referrer-when-downgrade"
+                      src={
+                        hotel.mapEmbedUrl &&
+                        isValidGoogleMapsEmbedUrl(hotel.mapEmbedUrl)
+                          ? hotel.mapEmbedUrl
+                          : `https://www.google.com/maps?q=${hotel.location.lat},${hotel.location.lng}&z=14&output=embed`
+                      }
+                    />
+                  </div>
+                </div>
+              )}
+
+            {/* NEW: FAQ section — place after Map, before Reviews */}
+            {hotel.faqs?.length > 0 && (
+              <div className="card2 p-4 sm:p-6">
+                <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                  Frequently Asked Questions
+                </h2>
+                <FaqAccordion faqs={hotel.faqs} />
+              </div>
+            )}
+
+            {/* NEW: Reviews section */}
+            <div className="card2 p-4 sm:p-6">
+              <h2 className="font-display font-bold text-2xl text-primary dark:text-white mb-4">
+                Guest Reviews {reviews.length > 0 && `(${reviews.length})`}
+              </h2>
+              <div className="space-y-6">
+                <ReviewsList reviews={reviews} />
+                <ReviewForm entityType="hotel" entity={hotel} />
+              </div>
+            </div>
+          </div>
+
+          {/* Sidebar */}
+          <div className="order-1 lg:order-2">
+            <BookingSidebar hotel={hotel} />
+          </div>
+        </div>
+      </div>
+
+      {/* NEW: Sponsored section at the very bottom, after the main container */}
+      <SponsoredListingsSection
+        sponsoredHotels={sponsoredHotels}
+        sponsoredRestaurants={sponsoredRestaurants}
+        destinationName={hotel.destinationName}
+        title={`You Might Also Like in ${hotel.destinationName}`}
+        excludeHotelId={hotel.id}
+      />
+
+      <MobileStickyBar hotel={hotel} />
+    </>
+  );
+}

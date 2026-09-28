@@ -1,0 +1,46 @@
+// src/app/page.js
+import dynamic from "next/dynamic";
+import Hero from "@/components/home/Hero";
+import FeaturedDestinations from "@/components/home/FeaturedDestinations";
+import FeaturedHotels from "@/components/home/FeaturedHotels";
+import FeaturedRestaurants from "@/components/home/FeaturedRestaurants";
+import WhyChooseUs from "@/components/home/WhyChooseUs";
+import CtaBanner from "@/components/home/CtaBanner";
+import { getSiteSettings } from "@/lib/services/settingsService";
+import { buildMetadata } from "@/utils/seo";
+
+
+// Dynamically import Testimonials since Swiper's JS isn't needed until scrolled into view
+const Testimonials = dynamic(() => import("@/components/home/Testimonials"), {
+  loading: () => <div className="h-96 bg-gray-50 dark:bg-gray-950" />, // prevents layout shift while chunk loads
+});
+
+export const revalidate = 3600; // regenerate page every 1 hour
+
+// export const metadata = {
+//   title: "Local Kokani | Book Hotels , Restaurants & Explore Top Destinations",
+//   description:
+//     "Discover handpicked hotels & restaurants across top destinations. Best prices, verified stays, instant WhatsApp booking assistance.",
+// };
+
+export const metadata = buildMetadata({
+  title: "Local Kokani | Book Hotels , Restaurants in Kokan",
+  description: "Discover handpicked hotels & restaurants across top destinations. Best prices, verified stays, instant WhatsApp booking assistance.",
+  path: "/",
+  keywords: ["hotel booking", "destinations", "travel", "hotels","local kokani","kokan tourism","kokan hotels","kokan restaurants"],
+});
+
+export default async function HomePage() {
+  const settings = await getSiteSettings();
+  return (
+    <>
+      <Hero heroImageUrl={settings.heroImage?.url} />
+      <FeaturedDestinations />
+      <FeaturedHotels />
+      <FeaturedRestaurants />
+      <WhyChooseUs />
+      <Testimonials />
+      <CtaBanner />
+    </>
+  );
+}
